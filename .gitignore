@@ -4,3 +4,5 @@ __pycache__
 serviceAccountKey.json
 .vscode
 .vsls.json
+
+templates/cache/
