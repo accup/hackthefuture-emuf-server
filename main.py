@@ -37,6 +37,7 @@ ZOUKA_NUM = 50
 LIMIT_NUM = 4
 
 emergency_flag = False
+form_sum = 0
 
 
 db = firestore.client()
@@ -153,6 +154,7 @@ def calc_num():
     if num1-num2+plus_today > ZOUKA_NUM:
         print("需要増加検知！！！！！！！！！！！！！")
         emergency_flag = True
+        # 製造メーカーに増量依頼
         print(emergency_flag)
 
     return "Hello world"
@@ -204,6 +206,47 @@ def check_mynumber():
 
 @app.route('/form_request', methods=['POST'])
 def form_request():
+    global form_sum
+
+    # 送信されたデータを取得
+    productID = int(request.json['productID'])
+    print('商品ID: ' + str(request.json['productID']))
+    num = int(request.json['num'])
+    print('増加依頼個数: ' + str(request.json['num']))
+    mynumber = int(request.json['mynumber'])
+    print('マイナンバー: ' + str(request.json['mynumber']))
+    # 証明書も
+
+    if form_sum < num:
+        return "not ok"
+    form_sum -= num
+
+    now = datetime.datetime.now(datetime.timezone(
+        datetime.timedelta(hours=9)))  # 日本時刻
+    print(now.strftime('%Y%m%d%H%M%S'))  # yyyyMMddHHmmss形式で出力
+
+    doc_ref = db.collection('customer').document(
+        str(mynumber) + '_' + str(productID))
+    doc = doc_ref.get()
+    if not doc.exists:
+        doc_ref.set({
+            'limit_num': LIMIT_NUM,
+            'datetime': str(now.strftime('%Y-%m-%d-%H-%M-%S-%f'))
+        })
+        doc = doc_ref.get()
+    current_limit_num = doc.to_dict()['limit_num']
+    doc_ref.update({
+        'limit_num': current_limit_num + num,
+        'datetime': str(now.strftime('%Y-%m-%d-%H-%M-%S-%f'))
+    })
+
+    return "Request Accepted"
+
+
+@app.route('/form_trans_request', methods=['POST'])
+def form_trans_request():
+    global form_sum
+
     # 送信されたデータを取得
     productID = int(request.json['productID'])
     print('商品ID: ' + str(request.json['productID']))
@@ -227,8 +270,12 @@ def form_request():
         })
         doc = doc_ref.get()
     current_limit_num = doc.to_dict()['limit_num']
+
+    if current_limit_num - num < 0:
+        return "not ok"
+    form_sum += num
     doc_ref.update({
-        'limit_num': current_limit_num + num,
+        'limit_num': current_limit_num - num,
         'datetime': str(now.strftime('%Y-%m-%d-%H-%M-%S-%f'))
     })
 
