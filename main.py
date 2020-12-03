@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_file
 import time
 import os
 import json
@@ -12,6 +12,10 @@ import datetime
 # csv関連
 import csv
 import pprint
+
+# # グラフ描画
+# import numpy as np
+# import matplotlib.pyplot as plt
 
 
 app = Flask(__name__)
@@ -33,11 +37,13 @@ def initialze_firebase():
 initialze_firebase()
 
 STORE_NUM = 3
+PRODUCT_NUM = 1
 ZOUKA_NUM = 50
 LIMIT_NUM = 4
 
-emergency_flag = False
+emergency_flag = True
 form_sum = 0
+store_num_now = 0
 
 
 db = firestore.client()
@@ -74,7 +80,8 @@ def map():
                 result = True
                 folium.Marker(
                     location=[i[1], i[2]],
-                    popup=str(i[3]) + '在庫' + str(doc.to_dict()['num']) + '個',
+                    popup=str(i[3]) + '在庫' +
+                    str(doc.to_dict()['num']) + '個',
                     icon=folium.Icon(color='blue', icon='info-sign')
                 ).add_to(folium_map)
                 break
@@ -89,6 +96,8 @@ def map():
 
 @app.route('/upload_purchase_history', methods=['POST'])
 def upload_purchase_history():
+    global store_num_now
+
     # 送信されたデータを取得
     storeID = int(request.json['storeID'])
     print('店舗ID: ' + str(request.json['storeID']))
@@ -125,39 +134,70 @@ def upload_purchase_history():
         'num': num
     })
 
+    store_num_now += 1
+    if store_num_now == STORE_NUM:
+        global emergency_flag
+        count = 0
+        num1 = 0
+        num2 = 0
+        plus_today = 0
+        # 降順に3つ取得
+        users_ref = db.collection(u'ToiletPaper_history').order_by(
+            'datetime', direction=firestore.Query.DESCENDING).limit(STORE_NUM * 2)
+        docs = users_ref.stream()
+        for doc in docs:
+            # print(u'{} => {}'.format(doc.id, doc.to_dict()))
+            # print(doc.to_dict()['num'])
+            count += 1
+            if count > STORE_NUM:
+                num1 += doc.to_dict()['num']
+            elif count <= STORE_NUM:
+                num2 += doc.to_dict()['num']
+                plus_today += doc.to_dict()['plus_num']
+        print("1日で減った在庫数は" +
+              str(num1 - num2 + plus_today) + "個")
+        store_num_now = 0
+
+        if num1-num2+plus_today > ZOUKA_NUM:
+            print("需要増加検知！！！！！！！！！！！！！")
+            emergency_flag = True
+            # 製造メーカーに増量依頼
+            print(emergency_flag)
+
     name = "Hello World"
     return name
 
 
-@app.route('/calc_num')
-def calc_num():
-    global emergency_flag
-    count = 0
-    num1 = 0
-    num2 = 0
-    plus_today = 0
-    # 降順に3つ取得
-    users_ref = db.collection(u'ToiletPaper_history').order_by(
-        'datetime', direction=firestore.Query.DESCENDING).limit(STORE_NUM * 2)
-    docs = users_ref.stream()
-    for doc in docs:
-        # print(u'{} => {}'.format(doc.id, doc.to_dict()))
-        # print(doc.to_dict()['num'])
-        count += 1
-        if count > STORE_NUM:
-            num1 += doc.to_dict()['num']
-        elif count <= STORE_NUM:
-            num2 += doc.to_dict()['num']
-            plus_today += doc.to_dict()['plus_num']
-    print("1日で減った在庫数は" + str(num1 - num2 + plus_today) + "個")
+@app.route('/get_limits', methods=['POST'])
+def get_limits():
+    if not emergency_flag:
+        return ""
 
-    if num1-num2+plus_today > ZOUKA_NUM:
-        print("需要増加検知！！！！！！！！！！！！！")
-        emergency_flag = True
-        # 製造メーカーに増量依頼
-        print(emergency_flag)
+    # 送信されたデータを取得
+    mynumber = int(request.json['mynumber'])
+    print('マイナンバー: ' + str(request.json['mynumber']))
 
-    return "Hello world"
+    now = datetime.datetime.now(datetime.timezone(
+        datetime.timedelta(hours=9)))  # 日本時刻
+
+    # 顧客データベースに保存or追加
+    product_limits = []
+    for productID in range(1, 1 + PRODUCT_NUM):
+        doc_ref = db.collection('customer').document(
+            str(mynumber) + '_' + str(productID))
+        doc = doc_ref.get()
+        if not doc.exists:
+            doc_ref.set({
+                'limit_num': LIMIT_NUM,
+                'datetime': str(now.strftime('%Y-%m-%d-%H-%M-%S-%f'))
+            })
+            doc = doc_ref.get()
+        product_limits.append((productID, doc.to_dict()['limit_num']))
+
+    return '\n'.join(
+        '{},{}'.format(productID, limit_num)
+        for productID, limit_num in product_limits
+    )
 
 
 @app.route('/check_mynumber', methods=['POST'])
@@ -167,6 +207,8 @@ def check_mynumber():
         # 送信されたデータを取得
         productID = int(request.json['productID'])
         print('商品ID: ' + str(request.json['productID']))
+        storeID = int(request.json['storeID'])
+        print('店舗ID: ' + str(request.json['storeID']))
         num = int(request.json['num'])
         print('購入個数: ' + str(request.json['num']))
         mynumber = int(request.json['mynumber'])
@@ -195,11 +237,21 @@ def check_mynumber():
                 'datetime': str(now.strftime('%Y-%m-%d-%H-%M-%S-%f'))
             })
             print('{}さんが{:4}個購入しました'.format(mynumber, num))
-            return "ok"
+
+            # 店舗別在庫の更新
+            doc_ref = db.collection('ToiletPaper').document(str(storeID))
+
+            rest_num = doc_ref.get().to_dict()['num']
+            doc_ref.set({
+                'num': rest_num - num
+            })
+            print('店舗{}の在庫残り{}個'.format(storeID, rest_num - num))
+
+            return "購入許可"
         else:
             # 購入失敗
             print('{}さんは購入に失敗しました'.format(mynumber))
-            return "not ok"
+            return "購入不許可"
     else:
         return "ok"
 
@@ -280,3 +332,19 @@ def form_trans_request():
     })
 
     return "Request Accepted"
+
+
+# @app.route('/aaa', methods=['GET', 'POST'])
+# def aaa():
+
+#     # 折れ線グラフを出力
+#     left = np.array([1, 2, 3, 4, 5])
+#     height = np.array([100, 300, 200, 500, 400])
+#     plt.plot(left, height)
+
+#     plt.savefig('templates/cache/figure.png')
+#     return send_file('templates/cache/figure.png', mimetype='image/png')
+
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
