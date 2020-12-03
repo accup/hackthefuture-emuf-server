@@ -79,6 +79,7 @@ def map():
                 break
 
     # マップをHTMLとして保存
+    os.makedirs('templates/cache/', exist_ok=True)
     folium_map.save('templates/cache/map4.html')
 
     # マップのHTMLを返す
