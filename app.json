@@ -1,0 +1,12 @@
+{
+  "name": "PlayGround",
+  "description": "Flask on Heroku",
+  "env": {
+    "FIREBASE_CREDENTIALS_PATH": {
+      "description": "Fiebase credentials path"
+    },
+    "FIREBASE_CREDENTIALS_JSON": {
+      "description": "Fiebase credentials JSON string"
+    }
+  }
+}
