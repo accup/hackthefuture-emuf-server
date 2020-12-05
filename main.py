@@ -41,6 +41,7 @@ STORE_NUM = 3
 PRODUCT_NUM = 1
 ZOUKA_NUM = 50
 LIMIT_NUM = 4
+PURCHASES_LIMIT = 100
 
 # 正規表現
 RE_POSTAL_CODE = re.compile(r"\d\d\d-?\d\d\d\d")
@@ -284,6 +285,17 @@ def check_mynumber():
             })
             print('店舗{}の在庫残り{}個'.format(storeID, rest_num - num))
 
+            # 購入履歴の追加
+            customers_ref = db.collection('customers')
+            customer_ref = customers_ref.document(str(mynumber))
+            purchases_ref = customer_ref.collection('purchases')
+            doc_ref = purchases_ref.document()
+            doc_ref.set({
+                'productID': productID,
+                'storeID': storeID,
+                'num': num,
+                'datetime': now,
+            })
             return "購入許可"
         else:
             # 購入失敗
@@ -370,6 +382,32 @@ def form_trans_request():
 
     return "Request Accepted"
 
+
+@app.route('/get_purchase_history', methods=['POST'])
+def get_purchase_history():
+    # 送信されたデータを取得
+    mynumber = int(request.json['mynumber'])
+
+    customers_ref = db.collection('customers')
+    customer_ref = customers_ref.document(str(mynumber))
+    purchases_ref = customer_ref.collection('purchases')
+
+    docs = purchases_ref.order_by(
+        'datetime',
+        direction=firestore.Query.DESCENDING,
+    ).limit(PURCHASES_LIMIT).stream()
+
+    history = [doc.to_dict() for doc in docs]
+
+    return '\n'.join(
+        ','.join((
+            str(info['productID']),
+            str(info['storeID']),
+            str(info['num']),
+            info['datetime'].strftime('%Y-%m-%d-%H-%M-%S-%f'),
+        ))
+        for info in history
+    )
 
 # @app.route('/aaa', methods=['GET', 'POST'])
 # def aaa():
