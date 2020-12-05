@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request, send_file
 import time
 import os
+import requests
+import re
 import json
 import folium
 # firebase
@@ -36,16 +38,22 @@ def initialze_firebase():
 
 initialze_firebase()
 
+# 定数
 STORE_NUM = 3
 PRODUCT_NUM = 1
 ZOUKA_NUM = 50
 LIMIT_NUM = 4
 
+# 正規表現
+RE_POSTAL_CODE = re.compile(r"\d\d\d-?\d\d\d\d")
+
+# グローバル変数
 emergency_flag = True
 form_sum = 0
 store_num_now = 0
 
 
+# Firestoreデータベース取得
 db = firestore.client()
 
 
@@ -57,7 +65,37 @@ def hello():
 
 @app.route('/map')
 def map():
-    folium_map = folium.Map(location=[35.690921, 139.700258], zoom_start=15)
+    # 送信されたデータを取得
+    postal_code_raw = request.args.get('postal_code', default=None)
+    if postal_code_raw is not None:
+        # パターンにマッチしないときはNoneに設定
+        if RE_POSTAL_CODE.fullmatch(postal_code_raw) is None:
+            postal_code = None
+        else:
+            postal_code = postal_code_raw
+    else:
+        postal_code = None
+
+    print('郵便番号: {} (raw: {})'.format(postal_code, postal_code_raw))
+
+    if postal_code is None:
+        # 緯度経度決め打ち
+        location = [35.690921, 139.700258]
+    else:
+        # HeartRails Geo APIで郵便番号から緯度経度を取得
+        heartrails_url = (
+            'http://geoapi.heartrails.com/api/json'
+            '?method=searchByPostal&postal={}'
+        )
+        response = requests.get(heartrails_url.format(postal_code))
+        response = response.json()['response']['location'][0]
+        location = [response['y'], response['x']]
+    print('緯度経度: {}'.format(location))
+    # マップ作成
+    folium_map = folium.Map(
+        location=location,
+        zoom_start=15,
+    )
 
     # firebase全検索
     users_ref = db.collection('ToiletPaper')
@@ -94,7 +132,7 @@ def map():
     return render_template('cache/map4.html')
 
 
-@app.route('/upload_purchase_history', methods=['POST'])
+@ app.route('/upload_purchase_history', methods=['POST'])
 def upload_purchase_history():
     global store_num_now
 
@@ -168,7 +206,7 @@ def upload_purchase_history():
     return name
 
 
-@app.route('/get_limits', methods=['POST'])
+@ app.route('/get_limits', methods=['POST'])
 def get_limits():
     if not emergency_flag:
         return ""
@@ -200,7 +238,7 @@ def get_limits():
     )
 
 
-@app.route('/check_mynumber', methods=['POST'])
+@ app.route('/check_mynumber', methods=['POST'])
 def check_mynumber():
 
     if emergency_flag == True:
@@ -256,7 +294,7 @@ def check_mynumber():
         return "ok"
 
 
-@app.route('/form_request', methods=['POST'])
+@ app.route('/form_request', methods=['POST'])
 def form_request():
     global form_sum
 
@@ -295,7 +333,7 @@ def form_request():
     return "Request Accepted"
 
 
-@app.route('/form_trans_request', methods=['POST'])
+@ app.route('/form_trans_request', methods=['POST'])
 def form_trans_request():
     global form_sum
 
