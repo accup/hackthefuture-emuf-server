@@ -125,12 +125,9 @@ def map():
                 ).add_to(folium_map)
                 break
 
-    # マップをHTMLとして保存
-    os.makedirs('templates/cache/', exist_ok=True)
-    folium_map.save('templates/cache/map4.html')
-
     # マップのHTMLを返す
-    return render_template('cache/map4.html')
+    html = folium_map.get_root().render()
+    return html
 
 
 @app.route('/upload_purchase_history', methods=['POST'])
