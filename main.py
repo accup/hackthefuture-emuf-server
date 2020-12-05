@@ -62,6 +62,14 @@ def hello():
     return name
 
 
+@app.route('/flag', methods=['POST'])
+def flag():
+    if emergency_flag:
+        return "1"
+    else:
+        return "0"
+
+
 @app.route('/map')
 def map():
     # 送信されたデータを取得
