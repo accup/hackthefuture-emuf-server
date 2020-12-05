@@ -1,5 +1,4 @@
-from flask import Flask, render_template, request, send_file
-import time
+from flask import Flask, render_template, request
 import os
 import requests
 import re
@@ -13,7 +12,6 @@ import datetime
 
 # csv関連
 import csv
-import pprint
 
 # # グラフ描画
 # import numpy as np
@@ -88,8 +86,12 @@ def map():
             '?method=searchByPostal&postal={}'
         )
         response = requests.get(heartrails_url.format(postal_code))
-        response = response.json()['response']['location'][0]
+        response = response.json()['response']
+        if 'location' not in response:
+            return 'No Location', 500
+        response = response['location'][0]
         location = [response['y'], response['x']]
+
     print('緯度経度: {}'.format(location))
     # マップ作成
     folium_map = folium.Map(
@@ -115,7 +117,6 @@ def map():
         # マーカーとしてマップに表示
         for i in line:
             if doc.id in i:
-                result = True
                 folium.Marker(
                     location=[i[1], i[2]],
                     popup=str(i[3]) + '在庫' +
@@ -132,7 +133,7 @@ def map():
     return render_template('cache/map4.html')
 
 
-@ app.route('/upload_purchase_history', methods=['POST'])
+@app.route('/upload_purchase_history', methods=['POST'])
 def upload_purchase_history():
     global store_num_now
 
@@ -157,8 +158,8 @@ def upload_purchase_history():
         collection_name = 'ToiletPaper'
 
     # 履歴データベースに保存
-    doc_ref = db.collection(
-        collection_name + '_history').document(str(now.strftime('%Y-%m-%d-%H-%M-%S-%f')))
+    history_ref = db.collection(collection_name + '_history')
+    doc_ref = history_ref.document(str(now.strftime('%Y-%m-%d-%H-%M-%S-%f')))
     doc_ref.set({
         'storeID': storeID,
         'num': num,
@@ -180,8 +181,10 @@ def upload_purchase_history():
         num2 = 0
         plus_today = 0
         # 降順に3つ取得
-        users_ref = db.collection(u'ToiletPaper_history').order_by(
-            'datetime', direction=firestore.Query.DESCENDING).limit(STORE_NUM * 2)
+        history_ref = db.collection(u'ToiletPaper_history')
+        users_ref = history_ref.order_by(
+            'datetime', direction=firestore.Query.DESCENDING
+        ).limit(STORE_NUM * 2)
         docs = users_ref.stream()
         for doc in docs:
             # print(u'{} => {}'.format(doc.id, doc.to_dict()))
@@ -206,7 +209,7 @@ def upload_purchase_history():
     return name
 
 
-@ app.route('/get_limits', methods=['POST'])
+@app.route('/get_limits', methods=['POST'])
 def get_limits():
     if not emergency_flag:
         return ""
@@ -238,10 +241,9 @@ def get_limits():
     )
 
 
-@ app.route('/check_mynumber', methods=['POST'])
+@app.route('/check_mynumber', methods=['POST'])
 def check_mynumber():
-
-    if emergency_flag == True:
+    if emergency_flag:
         # 送信されたデータを取得
         productID = int(request.json['productID'])
         print('商品ID: ' + str(request.json['productID']))
@@ -294,7 +296,7 @@ def check_mynumber():
         return "ok"
 
 
-@ app.route('/form_request', methods=['POST'])
+@app.route('/form_request', methods=['POST'])
 def form_request():
     global form_sum
 
@@ -333,7 +335,7 @@ def form_request():
     return "Request Accepted"
 
 
-@ app.route('/form_trans_request', methods=['POST'])
+@app.route('/form_trans_request', methods=['POST'])
 def form_trans_request():
     global form_sum
 
