@@ -8,6 +8,7 @@ import folium
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import firestore
+from firebase_admin import messaging
 import datetime
 
 # csv関連
@@ -47,7 +48,7 @@ PURCHASES_LIMIT = 100
 RE_POSTAL_CODE = re.compile(r"\d\d\d-?\d\d\d\d")
 
 # グローバル変数
-emergency_flag = True
+emergency_flag = False
 form_sum = 0
 store_num_now = 0
 
@@ -58,7 +59,9 @@ db = firestore.client()
 
 @app.route('/')
 def hello():
+    global emergency_flag
     name = "Hello World"
+    emergency_flag = False
     return name
 
 
@@ -207,6 +210,22 @@ def upload_purchase_history():
 
         if num1-num2+plus_today > ZOUKA_NUM:
             print("需要増加検知！！！！！！！！！！！！！")
+
+            # This registration token comes from the client FCM SDKs.
+            registration_token = os.environ['FCM_REGISTRATION_TOKEN']
+            myNotification = messaging.Notification(
+                title='需要増加検知', body='需要増加を検知しました！購入制限が開始されます。')
+            # See documentation on defining a message payload.
+            message = messaging.Message(
+                token=registration_token,
+                notification=myNotification
+            )
+            # Send a message to the device corresponding to the provided
+            # registration token.
+            response = messaging.send(message)
+            # Response is a message ID string.
+            print('Successfully sent message:', response)
+
             emergency_flag = True
             # 製造メーカーに増量依頼
             print(emergency_flag)
