@@ -73,6 +73,17 @@ def flag():
         return "0"
 
 
+@app.route('/set_flag', methods=['POST'])
+def set_flag():
+    global emergency_flag
+
+    emergency_flag = True
+    if emergency_flag:
+        return "1"
+    else:
+        return "0"
+
+
 @app.route('/map')
 def map():
     # 送信されたデータを取得
