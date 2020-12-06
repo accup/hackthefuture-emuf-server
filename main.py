@@ -57,7 +57,7 @@ store_num_now = 0
 db = firestore.client()
 
 
-@app.route('/')
+@app.route('/hello')
 def hello():
     global emergency_flag
     name = "Hello World"
